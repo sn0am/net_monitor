@@ -70,8 +70,6 @@ class Network:
             return "OFFLINE"
 
 
-set_text_counter(0)
-
 # Start application loop
 while True:
     try:
@@ -114,7 +112,7 @@ while True:
             network = Network('1.1.1.1')
             network.notification("DO (net_monitor):\n\nError occurred while resolving host."
                                  "\n\nCheck application for errors.\n\nMonitoring is down.")
-            print("Error occurred while resolving host. Check application for errors.Retrying...\n")
+            print("Error occurred while resolving host. Check application for errors. Retrying...\n")
             set_text_counter(1)
         print('Error occurred in loop, retrying...\n')
         time.sleep(5)
