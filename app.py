@@ -16,6 +16,7 @@ account_sid = os.environ.get("twil_sid")
 auth_token = os.environ.get("twil_token")
 
 text_fail_counter = 0
+text_delay = 0
 app_down_time = datetime.now()
 
 
@@ -23,6 +24,12 @@ def set_text_counter(value):
     global text_fail_counter
     text_fail_counter = value
     return text_fail_counter
+
+
+def set_text_delay(value):
+    global text_delay
+    text_delay = value
+    return text_delay
 
 
 def set_app_downtime(value):
@@ -83,6 +90,8 @@ while True:
         # --- [DNS] ERROR OCCURS HERE
         network = Network(socket.gethostbyname(network_host))
 
+        set_text_delay(0)
+
         if text_fail_counter != 0:
             app_return_time = datetime.now()
             app_down_duration = app_return_time - app_down_time
@@ -135,16 +144,18 @@ while True:
             ping_down_time = str(ping_down_time).split('.')[0]
             network.notification("DO (net_monitor):\n\n[PING] has recovered.\n"
                                  f"(Downtime: {ping_down_time})")
-            
-    except:
 
+    except:
         # --- RUNS IF [DNS] ERROR OCCURS
-        if text_fail_counter == 0:
-            network = Network('1.1.1.1')
-            network.notification("DO (net_monitor):\n\nAn error occurred during [DNS]"
-                                 "\nMonitoring is down.")
-            print("Error occurred while resolving host. Check application for errors. Retrying...\n")
-            set_text_counter(1)
-            set_app_downtime(datetime.now())
+        if text_delay > 2:
+            # Send SMS that error occurred after 3 failed DNS attempts.
+            if text_fail_counter == 0:
+                network = Network('1.1.1.1')
+                network.notification("DO (net_monitor):\n\nAn error occurred during [DNS]"
+                                     "\nMonitoring is down.")
+                print("Error occurred while resolving host. Check application for errors. Retrying...\n")
+                set_text_counter(1)
+                set_app_downtime(datetime.now())
+        text_delay += 1
         print('Error occurred in loop, retrying...\n')
-        time.sleep(5)
+        time.sleep(30)
