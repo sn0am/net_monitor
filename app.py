@@ -16,12 +16,19 @@ account_sid = os.environ.get("twil_sid")
 auth_token = os.environ.get("twil_token")
 
 text_fail_counter = 0
+app_down_time = datetime.now()
 
 
 def set_text_counter(value):
     global text_fail_counter
     text_fail_counter = value
     return text_fail_counter
+
+
+def set_app_downtime(value):
+    global app_down_time
+    app_down_time = value
+    return app_down_time
 
 
 # Create Network object
@@ -47,15 +54,14 @@ class Network:
 
         print(f"SMS notification has been sent to: {message.to}\n")
 
+    # --- [PING] ERROR OCCURS HERE
     def monitor(self):
         fail_counter = 0
-        while fail_counter < 3:
+        run_count = 0
+        while fail_counter < 3 and run_count < 50:
             if Network.ping_host(self) == "ONLINE":
                 print("Network is online.")
                 print("Checking again in one minute...\n")
-                if text_fail_counter != 0:
-                    network.notification("DO (net_monitor):\n\nApplication has recovered.")
-                    set_text_counter(0)
                 time.sleep(60)
             elif Network.ping_host(self) == "OFFLINE":
                 print("Network is unreachable.")
@@ -64,6 +70,7 @@ class Network:
                 fail_counter += 1
             elif Network.ping_host(self) == "ERROR":
                 return "ERROR"
+            run_count += 1
         if fail_counter == 3:
             print("Network is offline.")
             print(f"Sending notification SMS.")
@@ -73,7 +80,18 @@ class Network:
 # Start application loop
 while True:
     try:
+        # --- [DNS] ERROR OCCURS HERE
         network = Network(socket.gethostbyname(network_host))
+
+        if text_fail_counter != 0:
+            app_return_time = datetime.now()
+            app_down_duration = app_return_time - app_down_time
+            app_down_duration = str(app_down_duration).split('.')[0]
+            network.notification("DO (net_monitor):\n\n[DNS] has recovered.\n"
+                                 f"(Downtime: {app_down_duration})")
+            set_text_counter(0)
+
+        # --- [PING] ERROR OCCURS HERE
         if network.monitor() == "OFFLINE":
             # Send SMS that network is offline after 3 missed ping requests.
             network.notification("DO (net_monitor):\n\nHome network is offline.")
@@ -81,14 +99,9 @@ while True:
             offline = True
             start_time = datetime.now()
 
-        if network.ping_host() == "ERROR":
-            offline = True
-            print("Error occurred while pinging host.")
-
-        # If network is offline, perform this loop until restored.
-        while offline is True:
-            if network.ping_host() == "ONLINE":
-                if start_time:
+            # If network is offline, perform this loop until restored.
+            while offline is True:
+                if network.ping_host() == "ONLINE":
                     print('Network is back online')
                     print(f"Sending restore notification SMS.")
                     end_time = datetime.now()
@@ -96,23 +109,42 @@ while True:
                     duration = str(duration).split('.')[0]
                     network.notification("DO (net_monitor):\n\nHome network is back online.\n"
                                          f"(Downtime: {duration})")
+                    offline = False
+                    time.sleep(5)
                 else:
-                    network.notification("DO (net_monitor):\n\nApplication has recovered.")
-                offline = False
-                time.sleep(5)
-            else:
-                offline = True
-                print("Unable to ping network...")
-                print("Trying again in 30 seconds...\n")
-                time.sleep(30)
-                network = Network(socket.gethostbyname(network_host))
+                    offline = True
+                    print("Unable to ping network...")
+                    print("Trying again in 30 seconds...\n")
+                    time.sleep(30)
+                    # --- [DNS] ERROR OCCURS HERE
+                    network = Network(socket.gethostbyname(network_host))
 
+        # --- RUNS IF [PING] ERROR OCCURS
+        elif network.monitor() == "ERROR":
+            status_code = "ERROR"
+            ping_down_start = datetime.now()
+            print("Error occurred while pinging host.")
+            network.notification("DO (net_monitor):\n\nAn error occurred during [PING]"
+                                 "\nMonitoring is down.")
+            while status_code == "ERROR":
+                status_code = network.ping_host()
+                time.sleep(15)
+                network = Network(socket.gethostbyname(network_host))
+            ping_restore_time = datetime.now()
+            ping_down_time = ping_restore_time - ping_down_start
+            ping_down_time = str(ping_down_time).split('.')[0]
+            network.notification("DO (net_monitor):\n\n[PING] has recovered.\n"
+                                 f"(Downtime: {ping_down_time})")
+            
     except:
+
+        # --- RUNS IF [DNS] ERROR OCCURS
         if text_fail_counter == 0:
             network = Network('1.1.1.1')
-            network.notification("DO (net_monitor):\n\nError occurred while resolving host."
-                                 "\n\nCheck application for errors.\n\nMonitoring is down.")
+            network.notification("DO (net_monitor):\n\nAn error occurred during [DNS]"
+                                 "\nMonitoring is down.")
             print("Error occurred while resolving host. Check application for errors. Retrying...\n")
             set_text_counter(1)
+            set_app_downtime(datetime.now())
         print('Error occurred in loop, retrying...\n')
         time.sleep(5)
